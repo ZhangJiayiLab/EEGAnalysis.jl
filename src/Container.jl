@@ -1,6 +1,28 @@
-module Container
 
-import MAT
+
+
+function create_epoch_bymarker(data::Array{D, 2}, marker::Array{T, 1}, 
+        roi::Tuple{T,T}, fs::T, mbias::T=0.0) where {D, T}
+    gap = (roi[2] - roi[1]) * fs |> ceil |> Int
+    result = zeros(D, size(data, 1), gap, length(marker))
+    for (midx, eachm) in enumerate(marker)
+        start = (eachm + roi[1] + mbias) * fs |> floor |> Int
+        result[:, :, midx] = data[:, start:start+gap-1]
+    end
+    return result
+end
+
+function create_epoch_bymarker(data::Array{D, 1}, marker::Array{T, 1}, 
+        roi::Tuple{T,T}, fs::T, mbias::T=0.0) where {D, T}
+    gap = (roi[2] - roi[1]) * fs |> ceil |> Int
+    result = zeros(D, length(marker), gap)
+    for (midx, eachm) in enumerate(marker)
+        start = (eachm + roi[1] + mbias) * fs |> floor |> Int
+        result[midx,:] = data[start:start+gap-1]
+    end
+    return result
+end
+
 
 struct CompactDataContainer
     # meta
@@ -50,21 +72,13 @@ function createEpochByMarkername(container::CompactDataContainer, chidx::Int, ma
     return groupdata
 end
 
+
 function createEpochByMarker(data::Array{D,1}, marker::Array{T,1}, roi::Tuple{T,T}, fs::T; mbias::T=0.0) where {T, D}
     gap = Int((roi[2] - roi[1])*fs)
     groupdata = zeros(D, length(marker), gap)
     for (midx, eachm) in enumerate(marker)
         starter = (eachm + mbias + roi[1]) * fs |> floor |> Int
         groupdata[midx, :] = data[starter:starter+gap-1]
-    end
-    return groupdata
-end
-
-function createEpochByMarker(data::Array{D,2}, marker::Array{T,1}, roi::Tuple{T,T}, fs::T; mbias::T=0.0) where {T, D}
-    gap = Int((roi[2] - roi[1])*fs)
-    groupdata = zeros(D, size(data, 1), length(marker), gap)
-    for idx = 1:size(data, 1)
-        groupdata[idx, :, :] = createEpochByMarker(data[idx, :], marker, roi, fs)
     end
     return groupdata
 end
@@ -84,4 +98,56 @@ end
 
 
 
+########## ########## ########## ########## ##########
+########## iSplit Data Container ########## ##########
+########## ########## ########## ########## ##########
+
+struct iSplitUnit
+    chidx::Int
+    edfname::String
+    value::Array{Int16, 1}
+    physicalunit::Float32
+    samplingfrequency::Float32
+end
+
+struct iSplitContainer
+    chidx::Int
+    data::Dict{String, iSplitUnit}
+end
+
+function loadisplit(datadir, chname)
+    chmatname = joinpath(datadir, @sprintf("sgch_ch%03d.mat", chname))
+    raw = matread(chmatname)
+    
+    data = [name => iSplitUnit(chname, name, raw["values"][idx][:], 
+                                raw["physicalunit"][idx], raw["samplingfrequency"][idx]) 
+        for (idx,name) in enumerate(raw["edfnames"])] |> Dict
+    
+    return iSplitContainer(chname, data)
+end
+
+
+function chunk_isplit(isplitdata::iSplitContainer, markers::DataFrame, markername::String,
+        roi::Tuple{T,T}, mbias::T=0; merge::Bool=false) where {T<:Float64}
+    
+    _result = Array{Array{Int16, 2}, 1}()
+    
+    for eachname in keys(isplitdata.data)
+       markerlist = markers[(markers.id .== eachname).&(markers.mname .== markername), 3]
+        
+        _temp = create_epoch_bymarker(isplitdata.data[eachname].value, Array{T}(markerlist), 
+                                      roi, T(isplitdata.data[eachname].samplingfrequency), mbias)
+        
+        push!(_result, _temp)
+    end
+    
+    if merge
+        result = _result[1]
+        for i=2:length(_result)
+            result = vcat(result, _result[i])
+        end
+    else
+        result = _result
+    end
+    return result
 end
