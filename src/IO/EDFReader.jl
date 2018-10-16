@@ -32,6 +32,8 @@ struct EDFData
     
     # meta
     Fs::Float32  #sampling frequency
+    tspec::Array{Float32, 1}
+    physical_unit::Array{Float32, 1}
 end
 
 function readEDFFile(filename::String)
@@ -100,18 +102,20 @@ function readEDFFile(filename::String)
     
     
     #Data
-    data = zeros(Int16, (recordnum*samples[1], nchannel))
-    reserved_data = zeros(Int16, (recordnum*reserved_samples[1], nchannel))
+    data = zeros(Int16, (nchannel, recordnum*samples[1]))
+    reserved_data = zeros(Int16, (nchannel, recordnum*reserved_samples[1]))
     
     step = samples |> sum
     for ri = 1:recordnum
         record_data = read!(rawfile, Array{Int16, 1}(undef, step))
-        data[samples[1]*(ri-1)+1:samples[1]*ri,:] = reshape(record_data, (samples[1], nchannel))
+        data[:, samples[1]*(ri-1)+1:samples[1]*ri] = reshape(record_data, (nchannel, samples[1]))
     end
     
     close(rawfile)
     
     Fs = samples[1] / sampleduration
+    tspec = range(0, length=recordnum*samples[1], step=1/Fs) |> Array{Float32, 1}
+    physical_unit = (physical_max .- physical_min) ./ (digital_max - digital_min)
 
     
     return EDFData( version, patient_info, record_info,
@@ -120,7 +124,7 @@ function readEDFFile(filename::String)
                     channelLabels, channelType, physical_dim, 
                     physical_min, physical_max, digital_min, digital_max,
                     prefiltering, samples, reserved_samples,
-                    data, reserved_data, Fs)
+                    data, reserved_data, Fs, tspec, physical_unit)
 end
 
 end  # module EDFReader
