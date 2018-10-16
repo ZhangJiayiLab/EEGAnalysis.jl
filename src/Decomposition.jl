@@ -12,7 +12,7 @@ function morlet(F::T, fs::T) where {T}
     return wavelet |> Array{Complex{T}}
 end
 
-function dwt(data::Array{T, 2}, fs::T, frange::Array{T,1}; reflection::Bool=false, wavelet=morlet) where {T}
+function dwt(data::Array{D, 2}, fs::T, frange::Array{T,1}; reflection::Bool=false, wavelet=morlet) where {D, T}
     data_fft = data
 
     if reflection
@@ -26,16 +26,16 @@ function dwt(data::Array{T, 2}, fs::T, frange::Array{T,1}; reflection::Bool=fals
     for (fidx, ftarget) in enumerate(frange)
         w = wavelet(ftarget, fs) |> (x)->reshape(x, (1, length(x)))
         if reflection
-            result[fidx, :, :] = FastConv.convn(data_fft, w)[:, Int(fs)+size(data, 2):end-Int(fs)-size(data, 2)]
+            result[fidx, :, :] = conv2(data_fft, w)[:, Int(fs)+size(data, 2):end-Int(fs)-size(data, 2)]
         else
-            result[fidx, :, :] = FastConv.convn(data_fft, w)[:, Int(fs):end-Int(fs)]
+            result[fidx, :, :] = conv2(data_fft, w)[:, Int(fs):end-Int(fs)]
         end
     end
     return result
 
 end
 
-function dwt(data::Array{T, 1}, fs::T, frange::Array{T,1}; reflection::Bool=false, wavelet=morlet) where {T}
+function dwt(data::Array{D, 1}, fs::T, frange::Array{T,1}; reflection::Bool=false, wavelet=morlet) where {D, T}
     data_fft = data
 
     if reflection
