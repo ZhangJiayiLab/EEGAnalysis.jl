@@ -93,10 +93,55 @@ struct SplitDataContainer
 
     fs::Int64
     #TODO: marker_bias::Dict{String, Float64}
-    ERP::Dict{String, Array{Float64, 2}}
+    epoch::Dict{String, Array{Float64, 2}}
 end
 
+function getbias(bias::DataFrame, expname::String)
+    target = bias[findall(bias.exp .== expname),:].bias
+    if length(target) >= 1
+        return target[1]
+    else
+        println(target)
+        error("expname not found or invalid: $expname")
+    end
+end
 
+function loadsplitdata_hilbert(sgchdir::String, patientname::String, chidx::Int64,
+        fs::Int64, roi::Tuple{Float64, Float64};
+        exppattern::Regex=r"(.*?)_ch\d{3}\.mat", hilbertband::Tuple{Float64, Float64}=(30.0, 150.0))
+    
+    expnames = [match(exppattern, item)[1] 
+    for item in readdir(joinpath(sgchdir, @sprintf("ch%03d", chidx-1))) 
+    if occursin(exppattern, item)]
+    
+    markerbias = CSV.read(joinpath(sgchdir, "marker_bias.csv"), types=Dict([1=>String]), allowmissing=:none)
+    
+    epoch = Array{Float64, 2}(undef, 0, Int((roi[2]-roi[1])*fs) )
+    
+    for eachexp in expnames .|> String
+        sgchdatadir = joinpath(sgchdir, @sprintf("ch%03d", chidx-1), @sprintf("%s_ch%03d.mat", eachexp, chidx-1))
+        matdata = MAT.matread(sgchdatadir)
+
+        responsetype = Bandpass(hilbertband[1], hilbertband[2]; fs=fs)
+        designmethod = Butterworth(4)
+        hbvalue = filtfilt(digitalfilter(responsetype, designmethod), matdata["values"][:]) |> hilbert
+        ppx = hbvalue .|> abs .|> x->x^2 .|> log10
+            
+        mbias = try
+            getbias(markerbias, eachexp)
+        catch e
+            println("got error for \"$(eachexp)\", use 0.0 instead: $(e)")
+            0.0
+        end
+        
+        _temp = create_epoch_bymarker(ppx, matdata["markers"]["grating"][:], roi, Float64(fs), mbias)
+        epoch = vcat(epoch, _temp)
+    end
+    
+    epoch
+end
+    
+    
 
 ########## ########## ########## ########## ##########
 ########## iSplit Data Container ########## ##########

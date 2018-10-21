@@ -5,6 +5,7 @@ function gaussian_kernel(fs::T, sigma::T) where {T}
 end
 
 function gaussianwind(data::Array{D, 1}, fs::T, sigma::T) where {D, T}
-    totalpwr_filter = DSP.conv(data, gaussian_kernel(fs, sigma));
-    return totalpwr_filter[fs:end-fs]
+    k = gaussian_kernel(fs, sigma)
+    totalpwr_filter = DSP.conv(data, k);
+    return totalpwr_filter[Int(fs):end-Int(fs)] / sum(k)
 end
