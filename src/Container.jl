@@ -161,7 +161,7 @@ struct iSplitContainer
 end
 
 function loadisplit(datadir, chname)
-    chmatname = joinpath(datadir, @sprintf("sgch_ch%03d.mat", chname))
+    chmatname = joinpath(datadir, @sprintf("sgch_channel_%03d.mat", chname))
     raw = matread(chmatname)
     
     data = [name => iSplitUnit(chname, name, raw["values"][idx][:], 
@@ -173,12 +173,18 @@ end
 
 
 function chunk_isplit(isplitdata::iSplitContainer, markers::DataFrame, markername::String,
-        roi::Tuple{T,T}, mbias::T=0; merge::Bool=false) where {T<:Float64}
+                roi::Tuple{T,T}, mbias::T=0.0; merge::Bool=false) where {T<:Float64}
     
     _result = Array{Array{Int16, 2}, 1}()
     
     for eachname in keys(isplitdata.data)
-       markerlist = markers[(markers.id .== eachname).&(markers.mname .== markername), 3]
+        date = match(r"(\d{6})-(\d)", eachname)[1]
+        session = match(r"(\d{6})-(\d)", eachname)[2]
+        
+        markerlist = chunkmarker = markers.marker[
+                    (markers.date .== date).&
+                    (markers.file .== session).&
+                    (markers.mname .== markername)]
         
         _temp = create_epoch_bymarker(isplitdata.data[eachname].value, Array{T}(markerlist), 
                                       roi, T(isplitdata.data[eachname].samplingfrequency), mbias)
